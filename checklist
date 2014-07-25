@@ -1,0 +1,16 @@
+Adding new watches:
+	Wizard?
+	Conf file format
+	Required values:
+		- How often SHOULD backups be arriving?
+		- Margin of tolerance before alerting?
+		- Regex of backup name?
+			- Or based on directory?
+		- Organization
+		- Minimum size of file?  (Primitive check that backup is not corrupted)
+Ad-hoc reporting
+	for all devices of a specified organization
+Regularly scheduled checks from cron
+	Generate alerts
+		E-mail
+		Syslog

@@ -1,0 +1,63 @@
+#!/bin/bash
+# Create: 2014-07-24 John C. Petrucci( http://johncpetrucci.com )
+
+# SECTION: Script global variables
+me=$(basename $0)
+verbosity=2 # Start counting at 2 so that any increase to this will result in a minimum of file descriptor 3.
+maxverbosity=5 # The highest verbosity we use / allow to be displayed.
+
+# SECTION: Dependencies
+dependencies=("echo" "bash" "tr")
+for dependency in "${dependencies[@]}"; do
+	which $dependency &> /dev/null || { printf "%s %s\n" "ERROR: Required dependency is missing:" "$dependency" >&2; exit 1; }
+done
+
+# SECTION: Help function
+function_Help() {
+	cat <<-EOH >&2
+	Usage: $me [OPTION]... [FILE]
+	Description text. ###WIP
+	Example: $me -s <ORGANIZATION>
+	Options:
+	   -a                         Scan all organizations for recent backups
+	   -n                         Add new monitored backup
+	   -s <ORGANIZATION>          Scan <ORGANIZATION> for recent backups
+
+	With no FILE, /etc/$me.conf is used.
+	EOH
+	###printf '%5s\t\t%s' "-s" "Scan"
+}
+
+# SECTION: Argument parsing
+while getopts ":hans:v" option; do
+	case $option in
+		h) function_Help; exit 0;;
+		a) echo function_Scan;;
+		n) echo function_Create;;
+		s) echo function_Scan ${OPTARG};;
+		v) (( verbosity=verbosity+1 ));;
+		*) function_Help; exit 1;;
+	esac
+done
+shift $((OPTIND-1))
+
+for v in $(seq 3 $verbosity) # Start counting from 3 since 1 and 2 are standards (stdout/stderr).
+do
+	(( "$v" <= "$maxverbosity" )) && eval exec "$v>&2"  # Don't change anything higher than the maximum verbosity allowed.
+done
+
+for v in $(seq $(( verbosity+1 )) $maxverbosity ) # From the verbosity level one higher than requested, through the maximum;
+do
+	(( "$v" > "2" )) && eval exec "$v>/dev/null" # Redirect these to bitbucket, provided that they don't match stdout and stderr.
+done
+
+printf "%s %d\n" "Verbosity level set to:" "$verbosity" >&3
+
+if [[ ! -z "$1" ]]; then # If config file is specified
+	if [[ ! -f "$1" ]]; then # If is not file, error and quit
+		printf "%s: %s %s\n" "$me" "Configuration file not found:" "$1" >&2
+		exit 1;
+	fi
+fi
+
+printf "%s: %s %s\n" "$me" "Using configuration file" "${1-/etc/$me.conf}" >&3
