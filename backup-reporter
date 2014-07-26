@@ -7,7 +7,7 @@ verbosity=2 # Start counting at 2 so that any increase to this will result in a 
 maxverbosity=3 # The highest verbosity we use / allow to be displayed.
 
 # SECTION: Dependencies
-dependencies=("echo" "bash" "tr")
+dependencies=("echo" "bash" "find" "sed" "cut" "grep")
 for dependency in "${dependencies[@]}"; do
 	which $dependency &> /dev/null || { printf "%s %s\n" "ERROR: Required dependency is missing:" "$dependency" >&2; exit 1; }
 done
@@ -32,9 +32,9 @@ function_Help() {
 while getopts ":hans:v" option; do
 	case $option in
 		h) function_Help; exit 0;;
-		a) echo function_Scan;;
-		n) echo function_Create;;
-		s) echo function_Scan ${OPTARG};;
+		a) main="function_ScanAll";;
+		n) main="function_Create";;
+		s) main="function_Scan ${OPTARG}";;
 		v) (( verbosity=verbosity+1 ));;
 		*) function_Help; exit 1;;
 	esac
@@ -53,16 +53,52 @@ done
 
 printf "%s %d\n" "Verbosity level set to:" "$verbosity" >&3
 
-if [[ ! -z "$1" ]]; then # If config directory is specified
-	if [[ ! -d "$1" ]]; then # If is not directory, error and quit
-		printf "%s: %s %s\n" "$me" "Configuration path not found:" "$1" >&2
-		exit 1;
-	fi
+configurationpath="${1-/etc/$me.d}"
+printf "%s %s\n" "Using configuration path:" "$configurationpath" >&3
+
+if [[ ! -d "$configurationpath" ]]; then # If is not directory, error and quit
+	printf "%s %s\n" "Configuration path not found:" "$configurationpath" >&2
+	exit 1;
 fi
 
-printf "%s: %s %s\n" "$me" "Using configuration path" "${1-/etc/$me.d/}" >&3
-
 # SECTION: Scan function
-function_Scan(organization){
+function_Scan() {
+	if [[ "$#" == 1 ]]; then # Targetted mode (organization specified)
+		for organization in "$*"; do
+			printf "%s %s\n" "Scanning organization" "$organization" >&3
+		done
+	else # Scan all organizations
+		printf "%s\n" "Scanning all organizations" >&3
+	fi
+	
+	# For each device in organization:
+	for deviceconfiguration in $(find "${configurationpath}/${organization}" -name ".config" -print || printf "%s\n" "Unable to locate organization $organization." >&2); do
+		devicename="$(sed -re 's|.*/(.*)/.config|\1|' <<<"$deviceconfiguration")"
+		deviceorganization="$(sed -re 's|.*/(.*)/.*/.config|\1|' <<<"$deviceconfiguration")"
+		printf "%s '%s' of '%s'\n" "Found backup profile for" "$devicename" "$deviceorganization" >&3 
+
+		for configurationvariable in backuppath backupregex backupfrequency backupminimumsize; do
+			export $configurationvariable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
+		done
+
+		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime "-${backupfrequency:-0}" -size "+${backupminimumsize:-0}" -printf '#' -quit 2>&3)" ]]; then
+			printf "%s %s\n" "No backup files match criteria defined in" "$deviceconfiguration"
+			### Take other action such as syslog or email
+		fi
+		unset backuppath backupregex backupfrequency backupminimumsize devicename deviceorganization
+		
+	done
+}
+
+# SECTION: Create function
+function_Create() {
 
 }
+
+# SECTION: Main program body
+case "${main%% *}" in 
+	function_Scan) 		function_Scan "${main#* }";;
+	function_ScanAll) 	function_Scan;;
+	function_Create) 	function_Create;;
+	*) 			function_Help; exit 1;;
+esac
