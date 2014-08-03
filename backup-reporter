@@ -5,9 +5,12 @@
 me=$(basename $0)
 verbosity=2 # Start counting at 2 so that any increase to this will result in a minimum of file descriptor 3.
 maxverbosity=3 # The highest verbosity we use / allow to be displayed.
+colorsonred=$(tput setaf 1)
+colorsongreen=$(tput setaf 2)
+colorsoff=$(tput sgr0)
 
 # SECTION: Dependencies
-dependencies=("echo" "bash" "find" "sed" "cut" "grep")
+dependencies=("echo" "bash" "find" "sed" "cut" "grep" "tput")
 for dependency in "${dependencies[@]}"; do
 	which $dependency &> /dev/null || { printf "%s %s\n" "ERROR: Required dependency is missing:" "$dependency" >&2; exit 1; }
 done
@@ -22,6 +25,7 @@ function_Help() {
 	   -a                         Scan all organizations for recent backups
 	   -n                         Add new monitored backup
 	   -s <ORGANIZATION>          Scan <ORGANIZATION> for recent backups
+	   -v                         Verbose mode
 
 	With no DIR, /etc/$me.d/ is used.
 	EOH
@@ -78,12 +82,15 @@ function_Scan() {
 		printf "%s '%s' of '%s'\n" "Found backup profile for" "$devicename" "$deviceorganization" >&3 
 
 		for configurationvariable in backuppath backupregex backupfrequency backupminimumsize; do
-			export $configurationvariable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
+			export $configurationvariable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)" || { printf "%s %s\n" "ERROR: Backup profile is missing option:" "$configurationvariable" >&2; exit 1; }
+			### tweak position of error check
 		done
 
 		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime "-${backupfrequency:-0}" -size "+${backupminimumsize:-0}" -printf '#' -quit 2>&3)" ]]; then
-			printf "%s %s\n" "No backup files match criteria defined in" "$deviceconfiguration"
+			printf "%s%-10s%s No backup files match criteria defined in: %s\n" "$colorsonred" "[  FAIL  ]" "$colorsoff" "$deviceconfiguration"
 			### Take other action such as syslog or email
+		else
+			printf "%s%-10s%s Found valid backup for: %s\n" "$colorsongreen" "[   OK   ]" "$colorsoff" "$deviceconfiguration"
 		fi
 		unset backuppath backupregex backupfrequency backupminimumsize devicename deviceorganization
 		
@@ -92,6 +99,7 @@ function_Scan() {
 
 # SECTION: Create function
 function_Create() {
+	echo create
 
 }
 
