@@ -99,7 +99,37 @@ function_Scan() {
 
 # SECTION: Create function
 function_Create() {
-	echo create
+	clear
+	printf "%s\n\n" "Choose one of these existing organizations or create a new one:"
+	local i=0 # Counter for organizations detected in configuration directory.
+	existingorganizations=($(find "${configurationpath}/" -mindepth 1 -maxdepth 1 -type d -print))
+	for (( i = 0; i < ${#existingorganizations[@]}; i++ )); do
+		printf "%2d) %s\n" "$(( i + 1 ))" "${existingorganizations[$i]##*/}"
+	done
+		printf "%2d) %s\n" "$(( i + 1 ))" "Create a new organization"
+	unset i
+	
+	read -p "Organization # or name: "
+	[[ -n $REPLY ]] || { printf "%s\n" "No organization specified."; exit 1; }
+
+	local selectedorganization="$REPLY"
+	grep -Eq "[^0-9]" <<< "$REPLY" || selectedorganization="${existingorganizations[$(( REPLY - 1 ))]}" # If REPLY is numeric then actual reply is the offset into the array.
+	selectedorganization="${selectedorganization##*/}"
+
+	if (( $REPLY > ${#existingorganizations[@]} )); then
+		while :; do
+			read -p "Enter new organization's name: "
+			selectedorganization="$REPLY" # If REPLY is numeric and higher than highest index then create new.
+			printf "%s '%s' ... " "You entered:" "$selectedorganization"
+			read -p "is this okay? [y/N/q]: "
+			case $REPLY in
+				[yY]) break;;
+				[qQ]) exit 1;;
+			esac
+		done
+	fi
+
+	printf "%s %s\n" "Creating new device configuration for:" "$selectedorganization"
 
 }
 
