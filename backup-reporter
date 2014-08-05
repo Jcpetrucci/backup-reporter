@@ -81,18 +81,25 @@ function_Scan() {
 		deviceorganization="$(sed -re 's|.*/(.*)/.*/.config|\1|' <<<"$deviceconfiguration")"
 		printf "%s '%s' of '%s'\n" "Found backup profile for" "$devicename" "$deviceorganization" >&3 
 
-		for configurationvariable in backuppath backupregex backupfrequency backupminimumsize; do
-			export $configurationvariable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)" || { printf "%s %s\n" "ERROR: Backup profile is missing option:" "$configurationvariable" >&2; exit 1; }
-			### tweak position of error check
+		for configurationvariable in backuppath backupregex backupfrequency backupminimumsize; do # Required configuration variables.  Failure to set one of these is hard stop.
+			local variable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
+			(( ${#variable} > 0 )) || { printf "ERROR: Backup profile is missing required option: %s (%s)\n" "$configurationvariable" "$deviceconfiguration" >&2; continue 2; }
+			export $configurationvariable="$variable"
 		done
 
-		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime "-${backupfrequency:-0}" -size "+${backupminimumsize:-0}" -printf '#' -quit 2>&3)" ]]; then
-			printf "%s%-10s%s No backup files match criteria defined in: %s\n" "$colorsonred" "[  FAIL  ]" "$colorsoff" "$deviceconfiguration"
-			### Take other action such as syslog or email
+		for configurationvariable in backupsyslog backupemail; do # Optional configuration variables.  
+			local variable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
+			export $configurationvariable="$variable"
+		done
+
+		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime "-${backupfrequency:-0}" -size "+${backupminimumsize:-0M}" -printf '#' -quit 2>&3)" ]]; then
+			printf "[%s%s%s] No backup files match criteria defined for: %s of %s.\n" "$colorsonred" "  FAIL  " "$colorsoff" "$devicename" "$deviceorganization"
+			[[ -z "$backupsyslog" ]] || logger -t "$me" -p emerg "No backup files match criteria defined for: $devicename of $deviceorganization"
+			[[ -z "$backupemail" ]] || echo MAIL SOON ###
 		else
-			printf "%s%-10s%s Found valid backup for: %s\n" "$colorsongreen" "[   OK   ]" "$colorsoff" "$deviceconfiguration"
+			printf "[%s%s%s] Found valid backup for: %s of %s.\n" "$colorsongreen" "   OK   " "$colorsoff" "$devicename" "$deviceorganization"
 		fi
-		unset backuppath backupregex backupfrequency backupminimumsize devicename deviceorganization
+		unset backuppath backupregex backupfrequency backupminimumsize devicename deviceorganization backupsyslog backupemail
 		
 	done
 }
@@ -127,6 +134,7 @@ function_Create() {
 				[qQ]) exit 1;;
 			esac
 		done
+		mkdir -v "${configurationpath}/${selectedorganization}" >&3
 	fi
 
 	printf "%s %s\n" "Creating new device configuration for:" "$selectedorganization"
