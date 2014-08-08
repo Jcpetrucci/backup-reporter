@@ -81,18 +81,20 @@ function_Scan() {
 		deviceorganization="$(sed -re 's|.*/(.*)/.*/.config|\1|' <<<"$deviceconfiguration")"
 		printf "%s '%s' of '%s'\n" "Found backup profile for" "$devicename" "$deviceorganization" >&3 
 
-		for configurationvariable in backuppath backupregex backupfrequency backupminimumsize; do # Required configuration variables.  Failure to set one of these is hard stop.
+		for configurationvariable in backuppath backupregex backupfrequency; do # Required configuration variables.  Failure to set one of these is hard stop.
 			local variable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
-			(( ${#variable} > 0 )) || { printf "ERROR: Backup profile is missing required option: %s (%s)\n" "$configurationvariable" "$deviceconfiguration" >&2; continue 2; }
+			(( ${#variable} > 0 )) || { printf "[%s%s%s] Backup profile is missing required option: %s (%s)\n" "$colorsonred" " ERROR  " "$colorsoff" "$configurationvariable" "$deviceconfiguration" >&2; continue 2; }
+			export $configurationvariable="$variable"
+		done
+		printf "%s\n" "Configuration has all needed options." >&3
+
+		for configurationvariable in backupminimumsize backupsyslog backupemail; do # Optional configuration variables.  
+			local variable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
 			export $configurationvariable="$variable"
 		done
 
-		for configurationvariable in backupsyslog backupemail; do # Optional configuration variables.  
-			local variable="$(grep $configurationvariable "$deviceconfiguration" | cut -d'=' -f2)"
-			export $configurationvariable="$variable"
-		done
-
-		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime "-${backupfrequency:-0}" -size "+${backupminimumsize:-0M}" -printf '#' -quit 2>&3)" ]]; then
+		printf "%s -- %s\n" "Preparing to run cmd" "find \"$backuppath\" -type f -regex \"$backupregex\" -mtime -${backupfrequency} -size +${backupminimumsize:-0M} -printf '#' -quit" >&3
+		if [[ ! -n "$(find "$backuppath" -type f -regex "$backupregex" -mtime -${backupfrequency} -size +${backupminimumsize:-0M} -printf '#' -quit 2>/dev/null)" ]]; then
 			printf "[%s%s%s] No backup files match criteria defined for: %s of %s.\n" "$colorsonred" "  FAIL  " "$colorsoff" "$devicename" "$deviceorganization"
 			[[ -z "$backupsyslog" ]] || logger -t "$me" -p emerg "No backup files match criteria defined for: $devicename of $deviceorganization"
 			[[ -z "$backupemail" ]] || echo MAIL SOON ###
@@ -134,10 +136,38 @@ function_Create() {
 				[qQ]) exit 1;;
 			esac
 		done
-		mkdir -v "${configurationpath}/${selectedorganization}" >&3
+		mkdir -vp "${configurationpath}/${selectedorganization}" >&3
 	fi
+	
+	### Everything needs sanitized.
 
+	cd "${configurationpath}/${selectedorganization}" 2>&3 || { printf "%s\n" "Error- cannot cd to organization directory.  Please create it first."; exit 1; }
 	printf "%s %s\n" "Creating new device configuration for:" "$selectedorganization"
+	printf "%s\n" "What is the device name?  e.g. Firewall-External-1"
+	read -p "? " devicename
+	local deviceconfiguration="${configurationpath}/${selectedorganization}/${devicename}/.config"
+	mkdir -v "${configurationpath}/${selectedorganization}/${devicename}" >&3 2>&3 
+	cd "${configurationpath}/${selectedorganization}/${devicename}" >&3 2>&3 || { printf "%s\n" "Error- cannot enter deviceconfig path.  Check permissions."; exit 1; }
+	printf "%s\n" "Where are the backups be stored?"
+	read -ep "? " -i "/customer_backups/" backuppath ### Tweak this for tab completion of existing directories
+	printf "%s\n" "What regex defines the naming convention of backup files?  If unknown enter .*"
+	read -p "? " backupregex
+	printf "%s\n" "How often (in days) should we receive a new backup?"
+	read -p "? " backupfrequency
+	printf "%s\n" "Enter an OPTIONAL minimum size for a backup to be considered valid (with trailing 'M' for Mbytes)  e.g. 150M"
+	read -p "? " backupminimumsize
+	printf "%s\n" "Generate syslog alerts when we fail to find backups for this device? [y/N]"
+	read -p "? " backupsyslog
+	printf "%s\n" "Generate e-mail alerts when we fail to find backups for this device? [y/N]"
+	read -p "? " backupemail
+
+	> $deviceconfiguration || { printf "%s\n" "Error- cannot create deviceconfig.  Check permissions."; exit 1; }
+	[[ -n $backuppath ]] && printf "%s=%s\n" "backuppath" "$backuppath" >> $deviceconfiguration
+	[[ -n $backupregex ]] && printf "%s=%s\n" "backupregex" "$backupregex" >> $deviceconfiguration
+	[[ -n $backupfrequency ]] && printf "%s=%s\n" "backupfrequency" "$backupfrequency" >> $deviceconfiguration
+	[[ -n $backupminimumsize ]] && printf "%s=%s\n" "backupminimumsize" "$backupminimumsize" >> $deviceconfiguration
+	[[ -n $backupsyslog ]] && printf "%s=%s\n" "backupsyslog" "1" >> $deviceconfiguration
+	[[ -n $backupemail ]] && printf "%s=%s\n" "backupemail" "1" >> $deviceconfiguration
 
 }
 
