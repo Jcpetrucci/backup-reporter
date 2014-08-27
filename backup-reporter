@@ -148,7 +148,7 @@ function_Create() {
 	local deviceconfiguration="${configurationpath}/${selectedorganization}/${devicename}/.config"
 	mkdir -v "${configurationpath}/${selectedorganization}/${devicename}" >&3 2>&3 
 	cd "${configurationpath}/${selectedorganization}/${devicename}" >&3 2>&3 || { printf "%s\n" "Error- cannot enter deviceconfig path.  Check permissions."; exit 1; }
-	printf "%s\n" "Where are the backups be stored?"
+	printf "%s\n" "Where are the backups stored?"
 	read -ep "? " -i "/customer_backups/" backuppath ### Tweak this for tab completion of existing directories
 	printf "%s\n" "What regex defines the naming convention of backup files?  If unknown enter .*"
 	read -p "? " backupregex
